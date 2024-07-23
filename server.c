@@ -48,7 +48,7 @@ Node* createNode(struct reqStats req_stats){
     return newNode;
 }
 
-Queue* createQueue(Queue* q, int max){
+void createQueue(Queue* q, int max){
     q->head = NULL;
     q->tail = NULL;
     q->max_size = max;
@@ -101,7 +101,7 @@ struct reqStats dequeue(Queue* queue){
 
 
 // HW3: Parse the new arguments too
-void getargs(int *port, int *worker_threads, int *queue_size, enum OverLoadPolicy policy, int argc, char *argv[])
+void getargs(int *port, int *worker_threads, int *queue_size, enum OverLoadPolicy* policy, int argc, char *argv[])
 {
     if (argc < 2) {
 	fprintf(stderr, "Usage: %s <port>\n", argv[0]);
@@ -118,15 +118,15 @@ void getargs(int *port, int *worker_threads, int *queue_size, enum OverLoadPolic
     }
 
     if (strcmp(argv[4], "block") == 0) {
-        policy = block;
+        *policy = block;
     } else if (strcmp(argv[4], "dt") == 0) {
-        policy = dt;
+        *policy = dt;
     } else if (strcmp(argv[4], "dh") == 0) {
-        policy = dh;
+        *policy = dh;
     } else if (strcmp(argv[4], "bf") == 0) {
-        policy = bf;
+        *policy = bf;
     } else if (strcmp(argv[4], "random") == 0) {
-        policy = dr;
+        *policy = dr;
     } else {
         exit(1);
     }
@@ -141,6 +141,7 @@ void* handle_requests(void* arg) {
     running_requests--;
     pthread_cond_signal(&queueFull);
     pthread_mutex_unlock(&m);
+    return NULL;
 }
 
 
@@ -152,7 +153,7 @@ int main(int argc, char *argv[])
     struct sockaddr_in clientaddr;
 
     // parse arguments
-    getargs(&port, &amount_threads, &queue_size, policy, argc, argv);
+    getargs(&port, &amount_threads, &queue_size, &policy, argc, argv);
 
     // initialize lock and cond vars
     pthread_mutex_init(&m, NULL);
