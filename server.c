@@ -17,23 +17,27 @@ pthread_mutex_t m;
 pthread_cond_t queueEmpty;
 pthread_cond_t queueFull;
 
-typedef struct node {
+struct reqStats {
     int connfd;
     struct timeval req_arrival;
     struct timeval req_dispatch;
+};
+
+typedef struct node {
+    struct reqStats req_stats;
     struct node *next;
 } Node;
 
 typedef struct queue{
-    struct Node* head;
-    struct Node* tail;
+    Node* head;
+    Node* tail;
     int max_size;
     int queue_size;
 } Queue;
 
-Node* createNode(int conn){
+Node* createNode(struct reqStats req_stats){
     Node* newNode = (Node*)malloc(sizeof(Node));
-    newNode->connfd = conn;
+    newNode->req_stats = req_stats;
     newNode->next = NULL;
     return newNode;
 }
@@ -45,10 +49,46 @@ Queue* createQueue(Queue* q, int max){
     q->queue_size = 0;
 }
 
-void enqueue(Queue* q, Node* node){
+void enqueue(Queue* queue, struct reqStats req_stats){
     pthread_mutex_lock(&m);
-    
+    Node* new_node = createNode(req_stats);
+    while (queue->queue_size >= queue->max_size) {
+        pthread_cond_wait(&queueFull, &m);
+    }
+    // add new node to end of queue
+    if (queue->head == NULL) {
+        queue->head = new_node;
+    }
+    else {
+        queue->tail->next = new_node;
+    }
+    queue->tail = new_node;
+    queue->queue_size++;
+    pthread_cond_signal(&queueEmpty);
+    pthread_mutex_unlock(&m);
 }
+
+
+struct reqStats dequeue(Queue* queue){
+    pthread_mutex_lock(&m);
+    while (queue->queue_size == 0) {
+        pthread_cond_wait(&queueEmpty, &m);
+    }
+    // remove node from beginning of queue
+    Node* node = queue->tail;
+    if (queue->queue_size == 1) {
+        queue->head = NULL;
+    }
+    queue->tail = NULL;
+    struct reqStats req_stats = node->req_stats;
+    free(node);
+    queue->queue_size--;
+
+    pthread_cond_signal(&queueFull);
+    pthread_mutex_unlock(&m);
+    return req_stats;
+}
+
 
 // HW3: Parse the new arguments too
 void getargs(int *port, int argc, char *argv[])
