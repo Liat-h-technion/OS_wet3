@@ -102,13 +102,11 @@ void getargs(int *port, int *worker_threads, int *queue_size, enum OverLoadPolic
     *port = atoi(argv[1]);
     *worker_threads = atoi((argv[2]));
     if(*worker_threads <= 0){
-        fprintf(stderr, "Invalid number of worker threads: %s\n", argv[2]);
-        exit(1); //TODO: exit?? Error?
+        exit(1);
     }
     *queue_size = atoi(argv[3]);
     if(*queue_size <= 0){
-        fprintf(stderr, "Invalid queue size: %s\n", argv[3]);
-        exit(1);//TODO: exit?? Error?
+        exit(1);
     }
 
     if (strcmp(argv[4], "block") == 0) {
@@ -122,8 +120,7 @@ void getargs(int *port, int *worker_threads, int *queue_size, enum OverLoadPolic
     } else if (strcmp(argv[4], "random") == 0) {
         policy = dr;
     } else {
-        fprintf(stderr, "Invalid policy: %s\n", argv[4]);
-        exit(1);//TODO: exit?? Error?
+        exit(1);
     }
 }
 
@@ -134,7 +131,6 @@ int main(int argc, char *argv[])
     enum OverLoadPolicy policy;
     int listenfd, connfd, port, clientlen;
     struct sockaddr_in clientaddr;
-    int running_requests = 0; //TODO: Needed?
 
     getargs(&port, &worker_threads, &queue_size, policy, argc, argv);
 
