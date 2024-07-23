@@ -13,9 +13,13 @@
 // Most of the work is done within routines written in request.c
 //
 
+typedef struct queue Queue;
+
 pthread_mutex_t m;
 pthread_cond_t queueEmpty;
 pthread_cond_t queueFull;
+int running_requests;
+Queue waiting_requests_queue;
 
 enum OverLoadPolicy {block, dt, dh, bf, dr};
 
@@ -54,7 +58,7 @@ Queue* createQueue(Queue* q, int max){
 void enqueue(Queue* queue, struct reqStats req_stats){
     pthread_mutex_lock(&m);
     Node* new_node = createNode(req_stats);
-    while (queue->queue_size >= queue->max_size) {
+    while (queue->queue_size + running_requests >= queue->max_size) {
         pthread_cond_wait(&queueFull, &m);
     }
     // add new node to end of queue
@@ -77,16 +81,20 @@ struct reqStats dequeue(Queue* queue){
         pthread_cond_wait(&queueEmpty, &m);
     }
     // remove node from beginning of queue
-    Node* node = queue->tail;
+    Node* node = queue->head;
     if (queue->queue_size == 1) {
         queue->head = NULL;
+        queue->tail = NULL;
     }
-    queue->tail = NULL;
+    else {
+        queue->head = queue->head->next;
+    }
     struct reqStats req_stats = node->req_stats;
     free(node);
     queue->queue_size--;
+    running_requests++;
 
-    pthread_cond_signal(&queueFull);
+//    pthread_cond_signal(&queueFull);
     pthread_mutex_unlock(&m);
     return req_stats;
 }
@@ -124,47 +132,58 @@ void getargs(int *port, int *worker_threads, int *queue_size, enum OverLoadPolic
     }
 }
 
+void* handle_requests(void* arg) {
+    struct reqStats req_stats = dequeue(&waiting_requests_queue);
+    requestHandle(req_stats.connfd);
+    Close(req_stats.connfd);
+
+    pthread_mutex_lock(&m);
+    running_requests--;
+    pthread_cond_signal(&queueFull);
+    pthread_mutex_unlock(&m);
+}
+
 
 int main(int argc, char *argv[])
 {
-    int worker_threads, queue_size;
+    int amount_threads, queue_size;
     enum OverLoadPolicy policy;
     int listenfd, connfd, port, clientlen;
     struct sockaddr_in clientaddr;
 
-    getargs(&port, &worker_threads, &queue_size, policy, argc, argv);
+    // parse arguments
+    getargs(&port, &amount_threads, &queue_size, policy, argc, argv);
 
-    // 
-    // HW3: Create some threads...
-    //
-    // TODO: create threads in a loop, send them to execute a function that takes the first
-    //      request from the waiting-requests queue, moves it to the running-reuqests queue and handles it
+    // initialize lock and cond vars
+    pthread_mutex_init(&m, NULL);
+    pthread_cond_init(&queueEmpty, NULL);
+    pthread_cond_init(&queueFull, NULL);
 
+    // create socket for the listener
     listenfd = Open_listenfd(port);
 
-    // TODO: create an empty queue for waiting-requests and a queue for running-requests
-    Queue waiting_requests;
-    createQueue(&waiting_requests, queue_size);
+    createQueue(&waiting_requests_queue, queue_size);
 
-    while (1) {
-	clientlen = sizeof(clientaddr);
-	connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
-
-    // TODO: after accepting a request, add the connfd to the waiting-requests queue
-    //      (the worker threads will handle it with requestHandle(connfd) and close it
-
-    struct reqStats request;
-    request.connfd = connfd;
-    enqueue(&waiting_requests, request);
-	// HW3: In general, don't handle the request in the main thread.
-	// Save the relevant info in a buffer and have one of the worker threads 
-	// do the work. 
-	// 
-	requestHandle(connfd);
-
-	Close(connfd);
+    // HW3: Create some threads...
+    pthread_t* threads = (pthread_t*)malloc(amount_threads * sizeof(pthread_t));
+    for (int i=0; i<amount_threads; i++) {
+        pthread_create(&threads[i], NULL, handle_requests, NULL);
     }
 
+    while (1) {
+        clientlen = sizeof(clientaddr);
+        connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
+
+        struct reqStats request;
+        request.connfd = connfd;
+        enqueue(&waiting_requests_queue, request);
+    }
+
+    // TODO: should this be here?
+    pthread_mutex_destroy(&m);
+    pthread_cond_destroy(&queueEmpty);
+    pthread_cond_destroy(&queueFull);
+    free(threads);
 }
 
 
