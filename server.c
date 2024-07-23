@@ -16,6 +16,7 @@
 pthread_mutex_t m;
 pthread_cond_t queueEmpty;
 pthread_cond_t queueFull;
+int running_requests;
 
 struct reqStats {
     int connfd;
@@ -52,7 +53,7 @@ Queue* createQueue(Queue* q, int max){
 void enqueue(Queue* queue, struct reqStats req_stats){
     pthread_mutex_lock(&m);
     Node* new_node = createNode(req_stats);
-    while (queue->queue_size >= queue->max_size) {
+    while (queue->queue_size + running_requests >= queue->max_size) {
         pthread_cond_wait(&queueFull, &m);
     }
     // add new node to end of queue
@@ -100,23 +101,32 @@ void getargs(int *port, int argc, char *argv[])
     *port = atoi(argv[1]);
 }
 
+void* handle_requests(void* arg) {
+
+}
 
 int main(int argc, char *argv[])
 {
     int listenfd, connfd, port, clientlen;
     struct sockaddr_in clientaddr;
+    int amount_threads;
 
+    // initialize lock and cond vars
+    pthread_mutex_init(&m, NULL);
+    pthread_cond_init(&queueEmpty, NULL);
+    pthread_cond_init(&queueFull, NULL);
+
+    // parse arguments
     getargs(&port, argc, argv);
 
-    // 
-    // HW3: Create some threads...
-    //
-    // TODO: create threads in a loop, send them to execute a function that takes the first
-    //      request from the waiting-requests queue, moves it to the running-reuqests queue and handles it
-
+    // create socket for the listener
     listenfd = Open_listenfd(port);
 
-    // TODO: create an empty queue for waiting-requests and a queue for running-requests
+    // HW3: Create some threads...
+    pthread_t* threads = (pthread_t*)malloc(amount_threads * sizeof(pthread_t));
+    for (int i=0; i<amount_threads; i++) {
+        pthread_create(&threads[i], NULL, handle_requests, NULL);
+    }
 
     while (1) {
 	clientlen = sizeof(clientaddr);
@@ -135,6 +145,11 @@ int main(int argc, char *argv[])
 	Close(connfd);
     }
 
+    // TODO: should this be here?
+    pthread_mutex_destroy(&m);
+    pthread_cond_destroy(&queueEmpty);
+    pthread_cond_destroy(&queueFull);
+    free(threads);
 }
 
 
