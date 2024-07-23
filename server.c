@@ -19,7 +19,7 @@ pthread_mutex_t m;
 pthread_cond_t queueEmpty;
 pthread_cond_t queueFull;
 int running_requests;
-Queue waiting_requests;
+Queue waiting_requests_queue;
 
 enum OverLoadPolicy {block, dt, dh, bf, dr};
 
@@ -81,16 +81,20 @@ struct reqStats dequeue(Queue* queue){
         pthread_cond_wait(&queueEmpty, &m);
     }
     // remove node from beginning of queue
-    Node* node = queue->tail;
+    Node* node = queue->head;
     if (queue->queue_size == 1) {
         queue->head = NULL;
+        queue->tail = NULL;
     }
-    queue->tail = NULL;
+    else {
+        queue->head = queue->head->next;
+    }
     struct reqStats req_stats = node->req_stats;
     free(node);
     queue->queue_size--;
+    running_requests++;
 
-    pthread_cond_signal(&queueFull);
+//    pthread_cond_signal(&queueFull);
     pthread_mutex_unlock(&m);
     return req_stats;
 }
@@ -129,8 +133,16 @@ void getargs(int *port, int *worker_threads, int *queue_size, enum OverLoadPolic
 }
 
 void* handle_requests(void* arg) {
+    struct reqStats req_stats = dequeue(&waiting_requests_queue);
+    requestHandle(req_stats.connfd);
+    Close(req_stats.connfd);
 
+    pthread_mutex_lock(&m);
+    running_requests--;
+    pthread_cond_signal(&queueFull);
+    pthread_mutex_unlock(&m);
 }
+
 
 int main(int argc, char *argv[])
 {
@@ -150,7 +162,7 @@ int main(int argc, char *argv[])
     // create socket for the listener
     listenfd = Open_listenfd(port);
 
-    createQueue(&waiting_requests, queue_size);
+    createQueue(&waiting_requests_queue, queue_size);
 
     // HW3: Create some threads...
     pthread_t* threads = (pthread_t*)malloc(amount_threads * sizeof(pthread_t));
@@ -159,23 +171,12 @@ int main(int argc, char *argv[])
     }
 
     while (1) {
-	clientlen = sizeof(clientaddr);
-	connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
+        clientlen = sizeof(clientaddr);
+        connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
 
-    // TODO: after accepting a request, add the connfd to the waiting-requests queue
-    //      (the worker threads will handle it with requestHandle(connfd) and close it
-
-    struct reqStats request;
-    request.connfd = connfd;
-    enqueue(&waiting_requests, request);
-
-    // HW3: In general, don't handle the request in the main thread.
-	// Save the relevant info in a buffer and have one of the worker threads 
-	// do the work. 
-	// 
-	requestHandle(connfd);
-
-	Close(connfd);
+        struct reqStats request;
+        request.connfd = connfd;
+        enqueue(&waiting_requests_queue, request);
     }
 
     // TODO: should this be here?
