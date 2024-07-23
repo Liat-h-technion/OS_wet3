@@ -133,14 +133,15 @@ void getargs(int *port, int *worker_threads, int *queue_size, enum OverLoadPolic
 }
 
 void* handle_requests(void* arg) {
-    struct reqStats req_stats = dequeue(&waiting_requests_queue);
-    requestHandle(req_stats.connfd);
-    Close(req_stats.connfd);
-
-    pthread_mutex_lock(&m);
-    running_requests--;
-    pthread_cond_signal(&queueFull);
-    pthread_mutex_unlock(&m);
+    while(1) {
+        struct reqStats req_stats = dequeue(&waiting_requests_queue);
+        requestHandle(req_stats.connfd);
+        Close(req_stats.connfd);
+        pthread_mutex_lock(&m);
+        running_requests--;
+        pthread_cond_signal(&queueFull);
+        pthread_mutex_unlock(&m);
+    }
     return NULL;
 }
 
@@ -174,7 +175,6 @@ int main(int argc, char *argv[])
     while (1) {
         clientlen = sizeof(clientaddr);
         connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
-
         struct reqStats request;
         request.connfd = connfd;
         enqueue(&waiting_requests_queue, request);
