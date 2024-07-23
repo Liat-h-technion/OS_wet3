@@ -1,5 +1,7 @@
 #include "segel.h"
 #include "request.h"
+#include <sys/time.h>
+#include <pthread.h>
 
 // 
 // server.c: A very, very simple web server
@@ -10,6 +12,43 @@
 // Repeatedly handles HTTP requests sent to this port number.
 // Most of the work is done within routines written in request.c
 //
+
+pthread_mutex_t m;
+pthread_cond_t queueEmpty;
+pthread_cond_t queueFull;
+
+typedef struct node {
+    int connfd;
+    struct timeval req_arrival;
+    struct timeval req_dispatch;
+    struct node *next;
+} Node;
+
+typedef struct queue{
+    struct Node* head;
+    struct Node* tail;
+    int max_size;
+    int queue_size;
+} Queue;
+
+Node* createNode(int conn){
+    Node* newNode = (Node*)malloc(sizeof(Node));
+    newNode->connfd = conn;
+    newNode->next = NULL;
+    return newNode;
+}
+
+Queue* createQueue(Queue* q, int max){
+    q->head = NULL;
+    q->tail = NULL;
+    q->max_size = max;
+    q->queue_size = 0;
+}
+
+void enqueue(Queue* q, Node* node){
+    pthread_mutex_lock(&m);
+    
+}
 
 // HW3: Parse the new arguments too
 void getargs(int *port, int argc, char *argv[])
