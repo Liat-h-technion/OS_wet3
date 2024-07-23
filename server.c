@@ -13,10 +13,15 @@
 // Most of the work is done within routines written in request.c
 //
 
+typedef struct queue Queue;
+
 pthread_mutex_t m;
 pthread_cond_t queueEmpty;
 pthread_cond_t queueFull;
 int running_requests;
+Queue waiting_requests;
+
+enum OverLoadPolicy {block, dt, dh, bf, dr};
 
 struct reqStats {
     int connfd;
@@ -92,13 +97,35 @@ struct reqStats dequeue(Queue* queue){
 
 
 // HW3: Parse the new arguments too
-void getargs(int *port, int argc, char *argv[])
+void getargs(int *port, int *worker_threads, int *queue_size, enum OverLoadPolicy policy, int argc, char *argv[])
 {
     if (argc < 2) {
 	fprintf(stderr, "Usage: %s <port>\n", argv[0]);
 	exit(1);
     }
     *port = atoi(argv[1]);
+    *worker_threads = atoi((argv[2]));
+    if(*worker_threads <= 0){
+        exit(1);
+    }
+    *queue_size = atoi(argv[3]);
+    if(*queue_size <= 0){
+        exit(1);
+    }
+
+    if (strcmp(argv[4], "block") == 0) {
+        policy = block;
+    } else if (strcmp(argv[4], "dt") == 0) {
+        policy = dt;
+    } else if (strcmp(argv[4], "dh") == 0) {
+        policy = dh;
+    } else if (strcmp(argv[4], "bf") == 0) {
+        policy = bf;
+    } else if (strcmp(argv[4], "random") == 0) {
+        policy = dr;
+    } else {
+        exit(1);
+    }
 }
 
 void* handle_requests(void* arg) {
@@ -107,20 +134,23 @@ void* handle_requests(void* arg) {
 
 int main(int argc, char *argv[])
 {
+    int amount_threads, queue_size;
+    enum OverLoadPolicy policy;
     int listenfd, connfd, port, clientlen;
     struct sockaddr_in clientaddr;
-    int amount_threads;
+
+    // parse arguments
+    getargs(&port, &amount_threads, &queue_size, policy, argc, argv);
 
     // initialize lock and cond vars
     pthread_mutex_init(&m, NULL);
     pthread_cond_init(&queueEmpty, NULL);
     pthread_cond_init(&queueFull, NULL);
 
-    // parse arguments
-    getargs(&port, argc, argv);
-
     // create socket for the listener
     listenfd = Open_listenfd(port);
+
+    createQueue(&waiting_requests, queue_size);
 
     // HW3: Create some threads...
     pthread_t* threads = (pthread_t*)malloc(amount_threads * sizeof(pthread_t));
@@ -135,8 +165,11 @@ int main(int argc, char *argv[])
     // TODO: after accepting a request, add the connfd to the waiting-requests queue
     //      (the worker threads will handle it with requestHandle(connfd) and close it
 
-	// 
-	// HW3: In general, don't handle the request in the main thread.
+    struct reqStats request;
+    request.connfd = connfd;
+    enqueue(&waiting_requests, request);
+
+    // HW3: In general, don't handle the request in the main thread.
 	// Save the relevant info in a buffer and have one of the worker threads 
 	// do the work. 
 	// 
