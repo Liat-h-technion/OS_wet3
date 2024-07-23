@@ -5,6 +5,8 @@
 #include "segel.h"
 #include "request.h"
 
+
+
 // requestError(      fd,    filename,        "404",    "Not found", "OS-HW3 Server could not find this file");
 void requestError(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg) 
 {
@@ -154,7 +156,7 @@ void requestServeStatic(int fd, char *filename, int filesize)
 // handle a request
 void requestHandle(int fd)
 {
-
+    // TODO: WE NEED TO MODIFY THIS FUNCTION FOR THE STATISTICS AND PRINTING MESSAGE
    int is_static;
    struct stat sbuf;
    char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];

@@ -32,11 +32,19 @@ int main(int argc, char *argv[])
     // 
     // HW3: Create some threads...
     //
+    // TODO: create threads in a loop, send them to execute a function that takes the first
+    //      request from the waiting-requests queue, moves it to the running-reuqests queue and handles it
 
     listenfd = Open_listenfd(port);
+
+    // TODO: create an empty queue for waiting-requests and a queue for running-requests
+
     while (1) {
 	clientlen = sizeof(clientaddr);
 	connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
+
+    // TODO: after accepting a request, add the connfd to the waiting-requests queue
+    //      (the worker threads will handle it with requestHandle(connfd) and close it
 
 	// 
 	// HW3: In general, don't handle the request in the main thread.
