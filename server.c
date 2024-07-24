@@ -94,7 +94,7 @@ struct reqStats dequeue(Queue* queue){
     queue->queue_size--;
     running_requests++;
 
-//    pthread_cond_signal(&queueFull);
+//  FOR NOW THIS IS NOT NEEDED HERE: pthread_cond_signal(&queueFull);
     pthread_mutex_unlock(&m);
     return req_stats;
 }
@@ -181,12 +181,6 @@ int main(int argc, char *argv[])
         request.connfd = connfd;
         enqueue(&waiting_requests_queue, request);
     }
-
-    // TODO: should this be here?
-    pthread_mutex_destroy(&m);
-    pthread_cond_destroy(&queueEmpty);
-    pthread_cond_destroy(&queueFull);
-    free(threads);
 }
 
 
