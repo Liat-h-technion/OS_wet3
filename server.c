@@ -135,6 +135,7 @@ void getargs(int *port, int *worker_threads, int *queue_size, enum OverLoadPolic
 void* handle_requests(void* arg) {
     while(1) {
         struct reqStats req_stats = dequeue(&waiting_requests_queue);
+        gettimeofday(&req_stats.req_dispatch, NULL);
         requestHandle(req_stats.connfd);
         Close(req_stats.connfd);
         pthread_mutex_lock(&m);
@@ -174,8 +175,9 @@ int main(int argc, char *argv[])
 
     while (1) {
         clientlen = sizeof(clientaddr);
-        connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
         struct reqStats request;
+        connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
+        gettimeofday(&request.req_arrival, NULL);
         request.connfd = connfd;
         enqueue(&waiting_requests_queue, request);
     }
