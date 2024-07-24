@@ -132,7 +132,8 @@ void getargs(int *port, int *worker_threads, int *queue_size, enum OverLoadPolic
     }
 }
 
-void* handle_requests(void* arg) {
+void* handle_requests(void* thread_id) {
+    int i = *(int*)thread_id;
     while(1) {
         struct reqStats req_stats = dequeue(&waiting_requests_queue);
         gettimeofday(&req_stats.req_dispatch, NULL);
@@ -165,12 +166,15 @@ int main(int argc, char *argv[])
     // create socket for the listener
     listenfd = Open_listenfd(port);
 
+    // initialize empty queue for waiting requests
     createQueue(&waiting_requests_queue, queue_size);
 
     // HW3: Create some threads...
     pthread_t* threads = (pthread_t*)malloc(amount_threads * sizeof(pthread_t));
     for (int i=0; i<amount_threads; i++) {
-        pthread_create(&threads[i], NULL, handle_requests, NULL);
+        int *thread_id = malloc(sizeof(*thread_id));
+        *thread_id = i;
+        pthread_create(&threads[i], NULL, handle_requests, (void*)thread_id);
     }
 
     while (1) {
