@@ -55,12 +55,19 @@ void createQueue(Queue* q, int max){
     q->queue_size = 0;
 }
 
-void enqueue(Queue* queue, struct reqStats req_stats){
+void enqueue(Queue* queue, struct reqStats req_stats, enum OverLoadPolicy* policy){
     pthread_mutex_lock(&m);
-    Node* new_node = createNode(req_stats);
-    while (queue->queue_size + running_requests >= queue->max_size) {
+    if ( (*policy == dt) && (queue->queue_size + running_requests >= queue->max_size)) {
+        Close(req_stats.connfd);
+        pthread_mutex_unlock(&m);
+        return;
+    }
+
+    while ( (*policy == block) && (queue->queue_size + running_requests >= queue->max_size) ) {
         pthread_cond_wait(&queueFull, &m);
     }
+
+    Node* new_node = createNode(req_stats);
     // add new node to end of queue
     if (queue->head == NULL) {
         queue->head = new_node;
@@ -141,6 +148,7 @@ void* handle_requests(void* thread_id) {
         Close(req_stats.connfd);
         pthread_mutex_lock(&m);
         running_requests--;
+        // TODO: send the signal only if policy is block (probably)
         pthread_cond_signal(&queueFull);
         pthread_mutex_unlock(&m);
     }
@@ -183,7 +191,8 @@ int main(int argc, char *argv[])
         connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
         gettimeofday(&request.req_arrival, NULL);
         request.connfd = connfd;
-        enqueue(&waiting_requests_queue, request);
+        // TODO: for block_flush maybe we can add a cond here that waits on empty queue
+        enqueue(&waiting_requests_queue, request, &policy);
     }
 }
 
