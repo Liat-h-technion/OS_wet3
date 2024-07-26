@@ -1,7 +1,6 @@
 #include "segel.h"
 #include "request.h"
 #include <pthread.h>
-#include <stdbool.h>
 
 // 
 // server.c: A very, very simple web server
@@ -20,20 +19,6 @@ pthread_cond_t queueEmpty;
 pthread_cond_t queueFull;
 pthread_cond_t blockFlush_queueFull;
 int running_requests;
-Queue waiting_requests_queue;
-
-typedef struct node {
-    struct reqStats req_stats;
-    struct node *next;
-    struct node *prev;
-} Node;
-
-typedef struct queue{
-    Node* head;
-    Node* tail;
-    int max_size;
-    int queue_size;
-} Queue;
 
 Node* createNode(struct reqStats req_stats){
     Node* newNode = (Node*)malloc(sizeof(Node));
@@ -196,13 +181,24 @@ void* handle_requests(void* thread_id) {
     thread_stats->stat_req = 0;
     thread_stats->total_req = 0;
 
+    struct reqStats * skipped_req = (struct reqStats*)malloc(sizeof(struct reqStats));
+    bool* is_skip = (bool*)malloc(sizeof(bool));
+    *is_skip = false;
+
     while(1) {
-        struct reqStats req_stats = dequeue(&waiting_requests_queue);
+        struct reqStats req_stats;
+        if (*is_skip) {
+            *is_skip = false;
+            req_stats = *skipped_req;
+        }
+        else {
+            req_stats = dequeue(&waiting_requests_queue);
+        }
         struct timeval dispatch_time;
         gettimeofday(&dispatch_time, NULL);
         timersub(&dispatch_time, &req_stats.req_arrival, &req_stats.req_dispatch);
 
-        requestHandle(req_stats.connfd, thread_stats, req_stats);
+        requestHandle(req_stats.connfd, thread_stats, req_stats, is_skip, skipped_req);
         Close(req_stats.connfd);
         pthread_mutex_lock(&m);
         running_requests--;

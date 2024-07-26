@@ -1,6 +1,7 @@
 #ifndef __REQUEST_H__
 
 #include <sys/time.h>
+#include <stdbool.h>
 
 enum OverLoadPolicy {block, dt, dh, bf, dr};
 
@@ -18,6 +19,23 @@ struct reqStats {
     enum OverLoadPolicy policy;
 };
 
-void requestHandle(int fd, threads_stats* thread_stats, struct reqStats req_stats);
+typedef struct node {
+    struct reqStats req_stats;
+    struct node *next;
+    struct node *prev;
+} Node;
+
+typedef struct queue{
+    Node* head;
+    Node* tail;
+    int max_size;
+    int queue_size;
+} Queue;
+
+Queue waiting_requests_queue;
+
+void requestHandle(int fd, threads_stats* thread_stats, struct reqStats req_stats, bool* is_skip, struct reqStats* skipped_req);
+
+struct reqStats dequeue_from_end(Queue* queue);
 
 #endif

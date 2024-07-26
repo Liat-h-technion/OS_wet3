@@ -178,11 +178,15 @@ bool parseSkip(char * filename) {
         return false;
     }
     char *end = (filename + length - 5);
-    return strcmp(end, skip) == 0;
+    bool is_skip = (strcmp(end, skip) == 0);
+    if (is_skip) {
+        filename[length - 5] = '\0';
+    }
+    return is_skip;
 }
 
 // handle a request
-void requestHandle(int fd, threads_stats* thread_stats, struct reqStats req_stats)
+void requestHandle(int fd, threads_stats* thread_stats, struct reqStats req_stats, bool* is_skip, struct reqStats* skipped_req)
 {
    int is_static;
    struct stat sbuf;
@@ -203,8 +207,11 @@ void requestHandle(int fd, threads_stats* thread_stats, struct reqStats req_stat
    requestReadhdrs(&rio);
 
    thread_stats->total_req++;
-
    is_static = requestParseURI(uri, filename, cgiargs);
+   *is_skip = parseSkip(filename);
+   if (*is_skip) {
+       *skipped_req = dequeue_from_end(&waiting_requests_queue);
+   }
    if (stat(filename, &sbuf) < 0) {
       requestError(fd, filename, "404", "Not found", "OS-HW3 Server could not find this file");
       return;
