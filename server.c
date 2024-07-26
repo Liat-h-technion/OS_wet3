@@ -193,13 +193,14 @@ void* handle_requests(void* thread_id) {
         }
         else {
             req_stats = dequeue(&waiting_requests_queue);
+            struct timeval dispatch_time;
+            gettimeofday(&dispatch_time, NULL);
+            timersub(&dispatch_time, &req_stats.req_arrival, &req_stats.req_dispatch);
         }
-        struct timeval dispatch_time;
-        gettimeofday(&dispatch_time, NULL);
-        timersub(&dispatch_time, &req_stats.req_arrival, &req_stats.req_dispatch);
 
         requestHandle(req_stats.connfd, thread_stats, req_stats, is_skip, skipped_req);
         Close(req_stats.connfd);
+
         pthread_mutex_lock(&m);
         running_requests--;
         if (req_stats.policy == block) {
