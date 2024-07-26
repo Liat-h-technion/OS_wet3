@@ -168,7 +168,10 @@ void* handle_requests(void* thread_id) {
 
     while(1) {
         struct reqStats req_stats = dequeue(&waiting_requests_queue);
-        gettimeofday(&req_stats.req_dispatch, NULL);
+        struct timeval dispatch_time;
+        gettimeofday(&dispatch_time, NULL);
+        timersub(&dispatch_time, &req_stats.req_arrival, &req_stats.req_dispatch);
+
         requestHandle(req_stats.connfd, thread_stats, req_stats);
         Close(req_stats.connfd);
         pthread_mutex_lock(&m);
