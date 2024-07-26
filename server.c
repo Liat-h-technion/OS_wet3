@@ -2,6 +2,7 @@
 #include "request.h"
 #include <sys/time.h>
 #include <pthread.h>
+#include <stdbool.h>
 
 // 
 // server.c: A very, very simple web server
@@ -18,6 +19,7 @@ typedef struct queue Queue;
 pthread_mutex_t m;
 pthread_cond_t queueEmpty;
 pthread_cond_t queueFull;
+pthread_cond_t blockFlush_queueFull;
 int running_requests;
 Queue waiting_requests_queue;
 
@@ -27,6 +29,7 @@ struct reqStats {
     int connfd;
     struct timeval req_arrival;
     struct timeval req_dispatch;
+    enum OverLoadPolicy policy;
 };
 
 typedef struct node {
@@ -55,16 +58,31 @@ void createQueue(Queue* q, int max){
     q->queue_size = 0;
 }
 
-void enqueue(Queue* queue, struct reqStats req_stats, enum OverLoadPolicy* policy){
+void enqueue(Queue* queue, struct reqStats req_stats){
     pthread_mutex_lock(&m);
-    if ( (*policy == dt) && (queue->queue_size + running_requests >= queue->max_size)) {
+    if ( (req_stats.policy == dt) && (queue->queue_size + running_requests >= queue->max_size)) {
         Close(req_stats.connfd);
         pthread_mutex_unlock(&m);
         return;
     }
 
-    while ( (*policy == block) && (queue->queue_size + running_requests >= queue->max_size) ) {
+    while ( (req_stats.policy == block) && (queue->queue_size + running_requests >= queue->max_size) ) {
         pthread_cond_wait(&queueFull, &m);
+    }
+
+    bool block_flush_waited = false;
+    while ( (req_stats.policy == bf) && (queue->queue_size + running_requests >= queue->max_size) ) {
+        block_flush_waited = true;
+        pthread_cond_wait(&blockFlush_queueFull, &m);
+    }
+    if (block_flush_waited == true) {
+        Close(req_stats.connfd);
+        pthread_mutex_unlock(&m);
+        return;
+    }
+
+    if ( (req_stats.policy == dh) && (queue->queue_size + running_requests >= queue->max_size) ) {
+        // TODO: stuff
     }
 
     Node* new_node = createNode(req_stats);
@@ -148,8 +166,12 @@ void* handle_requests(void* thread_id) {
         Close(req_stats.connfd);
         pthread_mutex_lock(&m);
         running_requests--;
-        // TODO: send the signal only if policy is block (probably)
-        pthread_cond_signal(&queueFull);
+        if (req_stats.policy == block) {
+            pthread_cond_signal(&queueFull);
+        }
+        else if ( (req_stats.policy == bf) && (waiting_requests_queue.queue_size + running_requests == 0)) {
+            pthread_cond_signal(&blockFlush_queueFull);
+        }
         pthread_mutex_unlock(&m);
     }
     return NULL;
@@ -170,6 +192,7 @@ int main(int argc, char *argv[])
     pthread_mutex_init(&m, NULL);
     pthread_cond_init(&queueEmpty, NULL);
     pthread_cond_init(&queueFull, NULL);
+    pthread_cond_init(&blockFlush_queueFull, NULL);
 
     // create socket for the listener
     listenfd = Open_listenfd(port);
@@ -191,8 +214,8 @@ int main(int argc, char *argv[])
         connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
         gettimeofday(&request.req_arrival, NULL);
         request.connfd = connfd;
-        // TODO: for block_flush maybe we can add a cond here that waits on empty queue
-        enqueue(&waiting_requests_queue, request, &policy);
+        request.policy = policy;
+        enqueue(&waiting_requests_queue, request);
     }
 }
 
