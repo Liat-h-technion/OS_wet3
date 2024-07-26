@@ -1,4 +1,4 @@
-#include "segel.h"#include "segel.h"
+#include "segel.h"
 #include "request.h"
 #include <sys/time.h>
 #include <pthread.h>
