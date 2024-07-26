@@ -160,7 +160,7 @@ bool parseSkip(char * filename) {
     if (length < 5) {
         return false;
     }
-    char *end = filename + length - 5;
+    char *end = (filename + length - 5);
     return strcmp(end, skip) == 0;
 }
 
