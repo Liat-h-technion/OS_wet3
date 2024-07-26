@@ -4,7 +4,7 @@
 
 #include "segel.h"
 #include "request.h"
-#include <stdbool.h>
+
 
 
 
@@ -171,22 +171,23 @@ void requestServeStatic(int fd, char *filename, int filesize, threads_stats* thr
    Munmap(srcp, filesize);
 
 }
-bool parseSkip(char * filename) {
+int parseSkip(char * filename) {
     char* skip = ".skip";
     int length = (int)strlen(filename);
     if (length < 5) {
         return false;
     }
     char *end = (filename + length - 5);
-    bool is_skip = (strcmp(end, skip) == 0);
-    if (is_skip) {
+    int is_skip = (strcmp(end, skip) == 0);
+    if (is_skip == 0) {
         filename[length - 5] = '\0';
+        return 1;
     }
-    return is_skip;
+    return 0;
 }
 
 // handle a request
-void requestHandle(int fd, threads_stats* thread_stats, struct reqStats req_stats, bool* is_skip, struct reqStats* skipped_req)
+void requestHandle(int fd, threads_stats* thread_stats, struct reqStats req_stats, int* is_skip, struct reqStats* skipped_req)
 {
    int is_static;
    struct stat sbuf;

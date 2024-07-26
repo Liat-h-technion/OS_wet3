@@ -1,7 +1,7 @@
 #ifndef __REQUEST_H__
 
 #include <sys/time.h>
-#include <stdbool.h>
+
 
 enum OverLoadPolicy {block, dt, dh, bf, dr};
 
@@ -34,7 +34,7 @@ typedef struct queue{
 
 Queue waiting_requests_queue;
 
-void requestHandle(int fd, threads_stats* thread_stats, struct reqStats req_stats, bool* is_skip, struct reqStats* skipped_req);
+void requestHandle(int fd, threads_stats* thread_stats, struct reqStats req_stats, int* is_skip, struct reqStats* skipped_req);
 
 struct reqStats dequeue_from_end(Queue* queue);
 
