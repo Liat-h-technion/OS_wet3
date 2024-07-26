@@ -212,6 +212,9 @@ void requestHandle(int fd, threads_stats* thread_stats, struct reqStats req_stat
    *is_skip = parseSkip(filename);
    if (*is_skip) {
        *skipped_req = dequeue_from_end(&waiting_requests_queue);
+       struct timeval dispatch_time;
+       gettimeofday(&dispatch_time, NULL);
+       timersub(&dispatch_time, &skipped_req->req_arrival, &skipped_req->req_dispatch);
    }
    if (stat(filename, &sbuf) < 0) {
       requestError(fd, filename, "404", "Not found", "OS-HW3 Server could not find this file");
