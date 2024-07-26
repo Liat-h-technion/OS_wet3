@@ -2,6 +2,7 @@
 #include "request.h"
 #include <sys/time.h>
 #include <pthread.h>
+#include <stdbool.h>
 
 // 
 // server.c: A very, very simple web server
@@ -18,6 +19,7 @@ typedef struct queue Queue;
 pthread_mutex_t m;
 pthread_cond_t queueEmpty;
 pthread_cond_t queueFull;
+pthread_cond_t blockFlush_queueFull;
 int running_requests;
 Queue waiting_requests_queue;
 
@@ -27,6 +29,7 @@ struct reqStats {
     int connfd;
     struct timeval req_arrival;
     struct timeval req_dispatch;
+    enum OverLoadPolicy policy;
 };
 
 typedef struct node {
@@ -57,10 +60,32 @@ void createQueue(Queue* q, int max){
 
 void enqueue(Queue* queue, struct reqStats req_stats){
     pthread_mutex_lock(&m);
-    Node* new_node = createNode(req_stats);
-    while (queue->queue_size + running_requests >= queue->max_size) {
+    if ( (req_stats.policy == dt) && (queue->queue_size + running_requests >= queue->max_size)) {
+        Close(req_stats.connfd);
+        pthread_mutex_unlock(&m);
+        return;
+    }
+
+    while ( (req_stats.policy == block) && (queue->queue_size + running_requests >= queue->max_size) ) {
         pthread_cond_wait(&queueFull, &m);
     }
+
+    bool block_flush_waited = false;
+    while ( (req_stats.policy == bf) && (queue->queue_size + running_requests >= queue->max_size) ) {
+        block_flush_waited = true;
+        pthread_cond_wait(&blockFlush_queueFull, &m);
+    }
+    if (block_flush_waited == true) {
+        Close(req_stats.connfd);
+        pthread_mutex_unlock(&m);
+        return;
+    }
+
+    if ( (req_stats.policy == dh) && (queue->queue_size + running_requests >= queue->max_size) ) {
+        // TODO: stuff
+    }
+
+    Node* new_node = createNode(req_stats);
     // add new node to end of queue
     if (queue->head == NULL) {
         queue->head = new_node;
@@ -94,7 +119,7 @@ struct reqStats dequeue(Queue* queue){
     queue->queue_size--;
     running_requests++;
 
-//    pthread_cond_signal(&queueFull);
+//  FOR NOW THIS IS NOT NEEDED HERE: pthread_cond_signal(&queueFull);
     pthread_mutex_unlock(&m);
     return req_stats;
 }
@@ -132,14 +157,21 @@ void getargs(int *port, int *worker_threads, int *queue_size, enum OverLoadPolic
     }
 }
 
-void* handle_requests(void* arg) {
+void* handle_requests(void* thread_id) {
+    int i = *(int*)thread_id;
     while(1) {
         struct reqStats req_stats = dequeue(&waiting_requests_queue);
+        gettimeofday(&req_stats.req_dispatch, NULL);
         requestHandle(req_stats.connfd);
         Close(req_stats.connfd);
         pthread_mutex_lock(&m);
         running_requests--;
-        pthread_cond_signal(&queueFull);
+        if (req_stats.policy == block) {
+            pthread_cond_signal(&queueFull);
+        }
+        else if ( (req_stats.policy == bf) && (waiting_requests_queue.queue_size + running_requests == 0)) {
+            pthread_cond_signal(&blockFlush_queueFull);
+        }
         pthread_mutex_unlock(&m);
     }
     return NULL;
@@ -160,31 +192,31 @@ int main(int argc, char *argv[])
     pthread_mutex_init(&m, NULL);
     pthread_cond_init(&queueEmpty, NULL);
     pthread_cond_init(&queueFull, NULL);
+    pthread_cond_init(&blockFlush_queueFull, NULL);
 
     // create socket for the listener
     listenfd = Open_listenfd(port);
 
+    // initialize empty queue for waiting requests
     createQueue(&waiting_requests_queue, queue_size);
 
     // HW3: Create some threads...
     pthread_t* threads = (pthread_t*)malloc(amount_threads * sizeof(pthread_t));
     for (int i=0; i<amount_threads; i++) {
-        pthread_create(&threads[i], NULL, handle_requests, NULL);
+        int *thread_id = malloc(sizeof(*thread_id));
+        *thread_id = i;
+        pthread_create(&threads[i], NULL, handle_requests, (void*)thread_id);
     }
 
     while (1) {
         clientlen = sizeof(clientaddr);
-        connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
         struct reqStats request;
+        connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
+        gettimeofday(&request.req_arrival, NULL);
         request.connfd = connfd;
+        request.policy = policy;
         enqueue(&waiting_requests_queue, request);
     }
-
-    // TODO: should this be here?
-    pthread_mutex_destroy(&m);
-    pthread_cond_destroy(&queueEmpty);
-    pthread_cond_destroy(&queueFull);
-    free(threads);
 }
 
 
