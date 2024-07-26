@@ -22,6 +22,7 @@ struct reqStats {
 typedef struct node {
     struct reqStats req_stats;
     struct node *next;
+    struct node *prev;
 } Node;
 
 typedef struct queue{
