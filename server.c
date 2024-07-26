@@ -63,12 +63,12 @@ void enqueue(Queue* queue, struct reqStats req_stats){
         } //TODO: What to do if queue is empty
     }
     //Block Flush
-    bool block_flush_waited = false;
+    int block_flush_waited = 0;
     while ( (req_stats.policy == bf) && (queue->queue_size + running_requests >= queue->max_size) ) {
-        block_flush_waited = true;
+        block_flush_waited = 1;
         pthread_cond_wait(&blockFlush_queueFull, &m);
     }
-    if (block_flush_waited == true) {
+    if (block_flush_waited == 1) {
         Close(req_stats.connfd);
         pthread_mutex_unlock(&m);
         return;
@@ -182,13 +182,13 @@ void* handle_requests(void* thread_id) {
     thread_stats->total_req = 0;
 
     struct reqStats * skipped_req = (struct reqStats*)malloc(sizeof(struct reqStats));
-    bool* is_skip = (bool*)malloc(sizeof(bool));
-    *is_skip = false;
+    int* is_skip = (int*)malloc(sizeof(int));
+    *is_skip = 0;
 
     while(1) {
         struct reqStats req_stats;
         if (*is_skip) {
-            *is_skip = false;
+            *is_skip = 0;
             req_stats = *skipped_req;
         }
         else {
