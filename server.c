@@ -1,6 +1,5 @@
 #include "segel.h"
 #include "request.h"
-#include <sys/time.h>
 #include <pthread.h>
 #include <stdbool.h>
 
@@ -22,15 +21,6 @@ pthread_cond_t queueFull;
 pthread_cond_t blockFlush_queueFull;
 int running_requests;
 Queue waiting_requests_queue;
-
-enum OverLoadPolicy {block, dt, dh, bf, dr};
-
-struct reqStats {
-    int connfd;
-    struct timeval req_arrival;
-    struct timeval req_dispatch;
-    enum OverLoadPolicy policy;
-};
 
 typedef struct node {
     struct reqStats req_stats;
@@ -159,10 +149,16 @@ void getargs(int *port, int *worker_threads, int *queue_size, enum OverLoadPolic
 
 void* handle_requests(void* thread_id) {
     int i = *(int*)thread_id;
+    threads_stats* thread_stats = (threads_stats*)malloc(sizeof(threads_stats));
+    thread_stats->id = i;
+    thread_stats->dynm_req = 0;
+    thread_stats->stat_req = 0;
+    thread_stats->total_req = 0;
+
     while(1) {
         struct reqStats req_stats = dequeue(&waiting_requests_queue);
         gettimeofday(&req_stats.req_dispatch, NULL);
-        requestHandle(req_stats.connfd);
+        requestHandle(req_stats.connfd, thread_stats, req_stats);
         Close(req_stats.connfd);
         pthread_mutex_lock(&m);
         running_requests--;
