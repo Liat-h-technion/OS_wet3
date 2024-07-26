@@ -25,6 +25,7 @@ Queue waiting_requests_queue;
 typedef struct node {
     struct reqStats req_stats;
     struct node *next;
+    struct node *prev;
 } Node;
 
 typedef struct queue{
@@ -38,6 +39,7 @@ Node* createNode(struct reqStats req_stats){
     Node* newNode = (Node*)malloc(sizeof(Node));
     newNode->req_stats = req_stats;
     newNode->next = NULL;
+    newNode->prev = NULL;
     return newNode;
 }
 
@@ -69,6 +71,7 @@ void enqueue(Queue* queue, struct reqStats req_stats){
                 queue->tail = NULL;
             } else {
                 queue->head = queue->head->next;
+                queue->head->prev = NULL;
             }
             queue->queue_size--;
             free(node);
@@ -93,6 +96,7 @@ void enqueue(Queue* queue, struct reqStats req_stats){
     }
     else {
         queue->tail->next = new_node;
+        new_node->prev = queue->tail;
     }
     queue->tail = new_node;
     queue->queue_size++;
@@ -114,6 +118,32 @@ struct reqStats dequeue(Queue* queue){
     }
     else {
         queue->head = queue->head->next;
+        queue->head->prev = NULL;
+    }
+    struct reqStats req_stats = node->req_stats;
+    free(node);
+    queue->queue_size--;
+    running_requests++;
+
+//  FOR NOW THIS IS NOT NEEDED HERE: pthread_cond_signal(&queueFull);
+    pthread_mutex_unlock(&m);
+    return req_stats;
+}
+
+struct reqStats dequeue_from_end(Queue* queue){
+    pthread_mutex_lock(&m);
+    while (queue->queue_size == 0) {
+        pthread_cond_wait(&queueEmpty, &m);
+    }
+    // remove node from ending of queue
+    Node* node = queue->tail;
+    if (queue->queue_size == 1) {
+        queue->head = NULL;
+        queue->tail = NULL;
+    }
+    else {
+        queue->tail = queue->tail->prev;
+        queue->tail->next = NULL;
     }
     struct reqStats req_stats = node->req_stats;
     free(node);

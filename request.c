@@ -4,6 +4,7 @@
 
 #include "segel.h"
 #include "request.h"
+#include <stdbool.h>
 
 
 
@@ -169,6 +170,15 @@ void requestServeStatic(int fd, char *filename, int filesize, threads_stats* thr
    Rio_writen(fd, srcp, filesize);
    Munmap(srcp, filesize);
 
+}
+bool parseSkip(char * filename) {
+    char* skip = ".skip";
+    int length = (int)strlen(filename);
+    if (length < 5) {
+        return false;
+    }
+    char *end = (filename + length - 5);
+    return strcmp(end, skip) == 0;
 }
 
 // handle a request
