@@ -60,16 +60,31 @@ void createQueue(Queue* q, int max){
 
 void enqueue(Queue* queue, struct reqStats req_stats){
     pthread_mutex_lock(&m);
+    //Block
+    while ( (req_stats.policy == block) && (queue->queue_size + running_requests >= queue->max_size) ) {
+        pthread_cond_wait(&queueFull, &m);
+    }
+    //Drop Tail
     if ( (req_stats.policy == dt) && (queue->queue_size + running_requests >= queue->max_size)) {
         Close(req_stats.connfd);
         pthread_mutex_unlock(&m);
         return;
     }
-
-    while ( (req_stats.policy == block) && (queue->queue_size + running_requests >= queue->max_size) ) {
-        pthread_cond_wait(&queueFull, &m);
+    //Drop Head
+    if ( (req_stats.policy == dh) && (queue->queue_size + running_requests >= queue->max_size) ) {
+        Node *node = queue->head;
+        if (queue->head != NULL) {
+            if (queue->queue_size == 1) {
+                queue->head = NULL;
+                queue->tail = NULL;
+            } else {
+                queue->head = queue->head->next;
+            }
+            queue->queue_size--;
+            free(node);
+        } //TODO: What to do if queue is empty
     }
-
+    //Block Flush
     bool block_flush_waited = false;
     while ( (req_stats.policy == bf) && (queue->queue_size + running_requests >= queue->max_size) ) {
         block_flush_waited = true;
@@ -79,10 +94,6 @@ void enqueue(Queue* queue, struct reqStats req_stats){
         Close(req_stats.connfd);
         pthread_mutex_unlock(&m);
         return;
-    }
-
-    if ( (req_stats.policy == dh) && (queue->queue_size + running_requests >= queue->max_size) ) {
-        // TODO: stuff
     }
 
     Node* new_node = createNode(req_stats);
