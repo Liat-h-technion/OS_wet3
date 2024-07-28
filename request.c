@@ -175,7 +175,7 @@ int parseSkip(char * filename) {
     char* skip = ".skip";
     int length = (int)strlen(filename);
     if (length < 5) {
-        return false;
+        return 0;
     }
     char *end = (filename + length - 5);
     int is_skip = (strcmp(end, skip) == 0);
