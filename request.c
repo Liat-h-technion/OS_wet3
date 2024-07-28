@@ -171,16 +171,17 @@ void requestServeStatic(int fd, char *filename, int filesize, threads_stats* thr
    Munmap(srcp, filesize);
 
 }
-int parseSkip(char * filename) {
+
+int parseSkip(char * uri) {
     char* skip = ".skip";
-    int length = (int)strlen(filename);
+    int length = (int)strlen(uri);
     if (length < 5) {
-        return false;
+        return 0;
     }
-    char *end = (filename + length - 5);
+    char *end = (uri + length - 5);
     int is_skip = (strcmp(end, skip) == 0);
-    if (is_skip == 0) {
-        filename[length - 5] = '\0';
+    if (is_skip) {
+        uri[length - 5] = '\0';
         return 1;
     }
     return 0;
@@ -208,8 +209,8 @@ void requestHandle(int fd, threads_stats* thread_stats, struct reqStats req_stat
    requestReadhdrs(&rio);
 
    thread_stats->total_req++;
+   *is_skip = parseSkip(uri);
    is_static = requestParseURI(uri, filename, cgiargs);
-   *is_skip = parseSkip(filename);
    if (*is_skip) {
        *skipped_req = dequeue_from_end(&waiting_requests_queue);
        struct timeval dispatch_time;
