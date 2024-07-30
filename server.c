@@ -59,8 +59,14 @@ void enqueue(Queue* queue, struct reqStats req_stats){
                 queue->head->prev = NULL;
             }
             queue->queue_size--;
+            Close(node->req_stats.connfd);
             free(node);
-        } //TODO: What to do if queue is empty
+        }
+        else {
+            Close(req_stats.connfd);
+            pthread_mutex_unlock(&m);
+            return;
+        }
     }
     //Block Flush
     int block_flush_waited = 0;
@@ -110,15 +116,15 @@ struct reqStats dequeue(Queue* queue){
     queue->queue_size--;
     running_requests++;
 
-//  FOR NOW THIS IS NOT NEEDED HERE: pthread_cond_signal(&queueFull);
     pthread_mutex_unlock(&m);
     return req_stats;
 }
 
-struct reqStats dequeue_from_end(Queue* queue){
+int dequeue_from_end(Queue* queue, struct reqStats* req_stats){
     pthread_mutex_lock(&m);
-    while (queue->queue_size == 0) {
-        pthread_cond_wait(&queueEmpty, &m);
+    if (queue->queue_size == 0) {
+        pthread_mutex_unlock(&m);
+        return 0;
     }
     // remove node from ending of queue
     Node* node = queue->tail;
@@ -130,14 +136,13 @@ struct reqStats dequeue_from_end(Queue* queue){
         queue->tail = queue->tail->prev;
         queue->tail->next = NULL;
     }
-    struct reqStats req_stats = node->req_stats;
+    *req_stats = node->req_stats;
     free(node);
     queue->queue_size--;
     running_requests++;
 
-//  FOR NOW THIS IS NOT NEEDED HERE: pthread_cond_signal(&queueFull);
     pthread_mutex_unlock(&m);
-    return req_stats;
+    return 1;
 }
 
 

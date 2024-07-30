@@ -36,6 +36,6 @@ Queue waiting_requests_queue;
 
 void requestHandle(int fd, threads_stats* thread_stats, struct reqStats req_stats, int* is_skip, struct reqStats* skipped_req);
 
-struct reqStats dequeue_from_end(Queue* queue);
+int dequeue_from_end(Queue* queue, struct reqStats* req_stats);
 
 #endif
