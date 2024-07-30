@@ -9,7 +9,7 @@
 
 
 // requestError(      fd,    filename,        "404",    "Not found", "OS-HW3 Server could not find this file");
-void requestError(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg) 
+void requestError(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg, threads_stats* thread_stats, struct reqStats req_stats)
 {
    char buf[MAXLINE], body[MAXBUF];
 
@@ -29,14 +29,20 @@ void requestError(int fd, char *cause, char *errnum, char *shortmsg, char *longm
    Rio_writen(fd, buf, strlen(buf));
    printf("%s", buf);
 
-   sprintf(buf, "Content-Length: %lu\r\n\r\n", strlen(body));
+   sprintf(buf, "Content-Length: %lu\r\n", strlen(body));
+
+   sprintf(buf, "%sStat-Req-Arrival:: %lu.%06lu\r\n", buf, req_stats.req_arrival.tv_sec, req_stats.req_arrival.tv_usec);
+   sprintf(buf, "%sStat-Req-Dispatch:: %lu.%06lu\r\n", buf, req_stats.req_dispatch.tv_sec, req_stats.req_dispatch.tv_usec);
+   sprintf(buf, "%sStat-Thread-Id:: %d\r\n", buf, thread_stats->id);
+   sprintf(buf, "%sStat-Thread-Count:: %d\r\n", buf, thread_stats->total_req);
+   sprintf(buf, "%sStat-Thread-Static:: %d\r\n", buf, thread_stats->stat_req);
+   sprintf(buf, "%sStat-Thread-Dynamic:: %d\r\n\r\n", buf, thread_stats->dynm_req);
    Rio_writen(fd, buf, strlen(buf));
    printf("%s", buf);
 
    // Write out the content
    Rio_writen(fd, body, strlen(body));
    printf("%s", body);
-
 }
 
 
@@ -120,7 +126,7 @@ void requestServeDynamic(int fd, char *filename, char *cgiargs, threads_stats* t
    sprintf(buf, "%sStat-Thread-Id:: %d\r\n", buf, thread_stats->id);
    sprintf(buf, "%sStat-Thread-Count:: %d\r\n", buf, thread_stats->total_req);
    sprintf(buf, "%sStat-Thread-Static:: %d\r\n", buf, thread_stats->stat_req);
-   sprintf(buf, "%sStat-Thread-Dynamic:: %d\r\n\r\n", buf, thread_stats->dynm_req);
+   sprintf(buf, "%sStat-Thread-Dynamic:: %d\r\n", buf, thread_stats->dynm_req);
 
    Rio_writen(fd, buf, strlen(buf));
    int pid = 0;
@@ -155,7 +161,7 @@ void requestServeStatic(int fd, char *filename, int filesize, threads_stats* thr
    sprintf(buf, "HTTP/1.0 200 OK\r\n");
    sprintf(buf, "%sServer: OS-HW3 Web Server\r\n", buf);
    sprintf(buf, "%sContent-Length: %d\r\n", buf, filesize);
-   sprintf(buf, "%sContent-Type: %s\r\n\r\n", buf, filetype);
+   sprintf(buf, "%sContent-Type: %s\r\n", buf, filetype);
 
    sprintf(buf, "%sStat-Req-Arrival:: %lu.%06lu\r\n", buf, req_stats.req_arrival.tv_sec, req_stats.req_arrival.tv_usec);
    sprintf(buf, "%sStat-Req-Dispatch:: %lu.%06lu\r\n", buf, req_stats.req_dispatch.tv_sec, req_stats.req_dispatch.tv_usec);
@@ -195,6 +201,7 @@ void requestHandle(int fd, threads_stats* thread_stats, struct reqStats req_stat
    char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
    char filename[MAXLINE], cgiargs[MAXLINE];
    rio_t rio;
+   thread_stats->total_req++;
 
    Rio_readinitb(&rio, fd);
    Rio_readlineb(&rio, buf, MAXLINE);
@@ -203,34 +210,37 @@ void requestHandle(int fd, threads_stats* thread_stats, struct reqStats req_stat
    printf("%s %s %s\n", method, uri, version);
 
    if (strcasecmp(method, "GET")) {
-      requestError(fd, method, "501", "Not Implemented", "OS-HW3 Server does not implement this method");
+      requestError(fd, method, "501", "Not Implemented", "OS-HW3 Server does not implement this method", thread_stats, req_stats);
       return;
    }
    requestReadhdrs(&rio);
 
-   thread_stats->total_req++;
    *is_skip = parseSkip(uri);
    is_static = requestParseURI(uri, filename, cgiargs);
    if (*is_skip) {
-       *skipped_req = dequeue_from_end(&waiting_requests_queue);
-       struct timeval dispatch_time;
-       gettimeofday(&dispatch_time, NULL);
-       timersub(&dispatch_time, &skipped_req->req_arrival, &skipped_req->req_dispatch);
+       if (dequeue_from_end(&waiting_requests_queue, skipped_req) != 0) {
+           struct timeval dispatch_time;
+           gettimeofday(&dispatch_time, NULL);
+           timersub(&dispatch_time, &skipped_req->req_arrival, &skipped_req->req_dispatch);
+       }
+       else {
+           *is_skip = 0;
+       }
    }
    if (stat(filename, &sbuf) < 0) {
-      requestError(fd, filename, "404", "Not found", "OS-HW3 Server could not find this file");
+      requestError(fd, filename, "404", "Not found", "OS-HW3 Server could not find this file", thread_stats, req_stats);
       return;
    }
 
    if (is_static) {
       if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode)) {
-         requestError(fd, filename, "403", "Forbidden", "OS-HW3 Server could not read this file");
+         requestError(fd, filename, "403", "Forbidden", "OS-HW3 Server could not read this file", thread_stats, req_stats);
          return;
       }
       requestServeStatic(fd, filename, sbuf.st_size, thread_stats, req_stats);
    } else {
       if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode)) {
-         requestError(fd, filename, "403", "Forbidden", "OS-HW3 Server could not run this CGI program");
+         requestError(fd, filename, "403", "Forbidden", "OS-HW3 Server could not run this CGI program", thread_stats, req_stats);
          return;
       }
       requestServeDynamic(fd, filename, cgiargs, thread_stats, req_stats);
